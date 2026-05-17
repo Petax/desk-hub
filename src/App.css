@@ -193,12 +193,12 @@ input[type="range"] {
 /* ── media / spotify widget ──────────────────────────────────────────────── */
 
 .spotify-widget {
-  padding: 6px 10px;
+  padding: 7px 10px;
   flex: 1;                  /* grows to fill leftover vertical space */
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 5px;
+  gap: 7px;
   min-height: 60px;
   overflow: hidden;
 }
@@ -211,23 +211,23 @@ input[type="range"] {
 }
 
 .spotify-art {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 3px;
   flex-shrink: 0;
   object-fit: cover;
 }
 
 .spotify-art-placeholder {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 3px;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .spotify-meta {
@@ -253,28 +253,50 @@ input[type="range"] {
   margin-top: 1px;
 }
 
+.spotify-time {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.36);
+  text-align: right;
+  white-space: nowrap;
+}
+
 .spotify-controls {
   display: flex;
   align-items: center;
-  gap: 2px;
+  justify-content: center;
+  gap: 8px;
   flex-shrink: 0;
 }
 
 .ctrl-btn {
-  background: none;
-  border: none;
+  width: 34px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.07);
   cursor: pointer;
-  color: rgba(255, 255, 255, 0.45);
-  font-size: 13px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 15px;
   line-height: 1;
-  padding: 3px 5px;
-  border-radius: 3px;
-  transition: color 0.1s, background 0.1s;
+  padding: 0;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
 }
 
-.ctrl-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.08); }
+.ctrl-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.14);
+}
 
-.ctrl-btn.play-pause { color: #1db954; font-size: 14px; }
+.ctrl-btn.play-pause {
+  width: 42px;
+  color: #1db954;
+  font-size: 16px;
+}
 .ctrl-btn.play-pause:hover { color: #1ed760; background: rgba(29, 185, 84, 0.1); }
 
 /* ── settings panel ──────────────────────────────────────────────────────── */

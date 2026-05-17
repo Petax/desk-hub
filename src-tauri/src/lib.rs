@@ -500,7 +500,7 @@ fn get_media_info_inner() -> Result<MediaInfo, String> {
         .unwrap_or(false);
 
     let timeline = session.GetTimelineProperties().ok();
-    let position_secs = timeline
+    let mut position_secs = timeline
         .as_ref()
         .and_then(|t| t.Position().ok())
         .map(|p: TimeSpan| p.Duration as f64 / 10_000_000.0)
@@ -510,6 +510,19 @@ fn get_media_info_inner() -> Result<MediaInfo, String> {
         .and_then(|t| t.EndTime().ok())
         .map(|d: TimeSpan| d.Duration as f64 / 10_000_000.0)
         .unwrap_or(0.0);
+
+    if is_playing {
+        if let Some(last_updated_secs) = timeline
+            .as_ref()
+            .and_then(|t| t.LastUpdatedTime().ok())
+            .map(windows_datetime_to_unix_secs)
+        {
+            let elapsed = (chrono::Utc::now().timestamp_millis() as f64 / 1000.0
+                - last_updated_secs)
+                .clamp(0.0, 10.0);
+            position_secs = (position_secs + elapsed).min(duration_secs.max(position_secs));
+        }
+    }
 
     let source_app = "Spotify".to_string();
 
@@ -541,6 +554,12 @@ fn get_media_info_inner() -> Result<MediaInfo, String> {
         duration_secs,
         thumbnail_b64,
     })
+}
+
+#[cfg(target_os = "windows")]
+fn windows_datetime_to_unix_secs(dt: windows::Foundation::DateTime) -> f64 {
+    const WINDOWS_TO_UNIX_EPOCH_100NS: i64 = 116_444_736_000_000_000;
+    (dt.UniversalTime - WINDOWS_TO_UNIX_EPOCH_100NS) as f64 / 10_000_000.0
 }
 
 // Async wrapper — offloads the blocking .get() calls to a dedicated thread
