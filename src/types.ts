@@ -1,5 +1,4 @@
 export interface AppConfig {
-  openai_api_key?: string;
   claude_session_key?: string;
   claude_daily_limit?: number;
   opacity?: number; // 0.0–1.0, default 0.93
@@ -15,9 +14,12 @@ export interface ClaudeUsage {
   local_limit: number;
 }
 
-export interface OpenAIUsage {
-  tokens_used: number;
-  requests: number;
+export interface CodexUsage {
+  plan: string;
+  five_hour_remaining_pct?: number;
+  five_hour_resets_at?: string;
+  weekly_remaining_pct?: number;
+  weekly_resets_at?: string;
 }
 
 export interface MediaInfo {

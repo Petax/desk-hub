@@ -7,7 +7,6 @@ use tauri::{AppHandle, Manager, Window};
 
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
-    pub openai_api_key: Option<String>,
     pub claude_session_key: Option<String>,
     pub claude_daily_limit: Option<u32>,
     pub opacity: Option<f64>,
@@ -65,10 +64,8 @@ async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
 
     // Try the claude.ai API if a session key is configured
     if let Some(session_key) = config.claude_session_key.as_deref() {
-        if !session_key.is_empty() {
-            if let Ok(usage) = fetch_claude_api(session_key, local_limit).await {
-                return Ok(usage);
-            }
+        if !session_key.trim().is_empty() {
+            return fetch_claude_api(session_key.trim(), local_limit).await;
         }
     }
 
@@ -82,101 +79,55 @@ async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
     })
 }
 
-async fn powershell_get_json(url: &str, session_key: &str) -> Result<serde_json::Value, String> {
-    let cmd = format!(
-        "$r = Invoke-WebRequest -Uri '{url}' \
-         -Headers @{{'Cookie'='sessionKey={session_key}';'anthropic-client-type'='web'}} \
-         -UseBasicParsing; $r.Content"
-    );
-    let output = tokio::process::Command::new("powershell.exe")
-        .args(["-NonInteractive", "-NoProfile", "-Command", &cmd])
-        .output()
+async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Value, String> {
+    let resp = reqwest::Client::new()
+        .get(url)
+        .header("Cookie", format!("sessionKey={}", session_key))
+        .header("anthropic-client-type", "web")
+        .header("Origin", "https://claude.ai")
+        .header("Referer", "https://claude.ai/settings/usage")
+        .send()
         .await
         .map_err(|e| e.to_string())?;
 
-    if !output.status.success() {
-        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    let status = resp.status();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!("Claude API {}: {}", status, compact_error_body(&body)));
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    serde_json::from_str(stdout.trim()).map_err(|e| format!("JSON parse: {e}\n{}", stdout.trim()))
+
+    serde_json::from_str(body.trim()).map_err(|e| format!("Claude JSON parse: {e}"))
 }
 
 async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeUsage, String> {
     // Step 1: get account info and org UUID
-    let me = powershell_get_json("https://api.claude.ai/api/accounts/me", session_key).await?;
+    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
 
-    let org_uuid = me["memberships"]
-        .as_array()
-        .and_then(|m| m.first())
-        .and_then(|m| m["organization"]["uuid"].as_str())
-        .unwrap_or("")
-        .to_string();
-
-    let plan = me["memberships"]
-        .as_array()
-        .and_then(|m| m.first())
-        .and_then(|m| m["organization"]["active_flags"].as_array())
-        .and_then(|flags| {
-            if flags.iter().any(|f| f.as_str() == Some("max_plan")) {
-                Some("Max")
-            } else if flags.iter().any(|f| f.as_str() == Some("pro_plan")) {
-                Some("Pro")
-            } else {
-                None
-            }
-        })
-        .unwrap_or("Free")
-        .to_string();
+    let org_uuid = claude_org_uuid(&me).unwrap_or_default();
 
     if org_uuid.is_empty() {
         return Err("Could not find org UUID".to_string());
     }
 
-    // Step 2: get rate limits for the org
-    let limits = powershell_get_json(
-        &format!("https://api.claude.ai/api/organizations/{}/rate_limit_status", org_uuid),
+    let subscription = claude_get_json(
+        &format!("https://claude.ai/api/organizations/{}/subscription_details", org_uuid),
+        session_key,
+    )
+    .await
+    .ok();
+
+    // Step 2: get live usage for the org, matching the claude.ai usage settings page.
+    let limits = claude_get_json(
+        &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
         session_key,
     ).await?;
 
-    // Parse session usage
-    let session_pct = limits["current_session"]
-        .as_object()
-        .and_then(|s| {
-            let used = s["messages_used"].as_f64()?;
-            let limit = s["messages_limit"].as_f64()?;
-            if limit > 0.0 {
-                Some((used / limit) * 100.0)
-            } else {
-                s["percent_used"].as_f64()
-            }
-        })
-        .or_else(|| limits["current_session"]["percent_used"].as_f64());
+    let session_pct = usage_pct(&limits, "five_hour");
+    let session_resets_in = usage_resets_at(&limits, "five_hour").map(fmt_resets_in);
 
-    let session_resets_in = limits["current_session"]["resets_at"]
-        .as_str()
-        .map(fmt_resets_in)
-        .or_else(|| {
-            limits["current_session"]["resets_in_seconds"]
-                .as_f64()
-                .map(fmt_seconds)
-        });
-
-    let weekly_pct = limits["weekly"]
-        .as_object()
-        .and_then(|w| {
-            let used = w["messages_used"].as_f64()?;
-            let limit = w["messages_limit"].as_f64()?;
-            if limit > 0.0 {
-                Some((used / limit) * 100.0)
-            } else {
-                w["percent_used"].as_f64()
-            }
-        })
-        .or_else(|| limits["weekly"]["percent_used"].as_f64());
-
-    let weekly_resets_at = limits["weekly"]["resets_at"]
-        .as_str()
-        .map(fmt_resets_at);
+    let weekly_pct = usage_pct(&limits, "seven_day");
+    let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(fmt_resets_at);
+    let plan = claude_plan_label(&me, subscription.as_ref(), &limits).to_string();
 
     Ok(ClaudeUsage {
         plan,
@@ -187,6 +138,88 @@ async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeU
         local_messages: None,
         local_limit,
     })
+}
+
+fn usage_pct(data: &serde_json::Value, key: &str) -> Option<f64> {
+    data[key]["utilization"]
+        .as_f64()
+        .or_else(|| data[key]["utilization_pct"].as_f64())
+        .or_else(|| data[key]["percent_used"].as_f64())
+        .map(|v| if v <= 1.0 { v * 100.0 } else { v })
+}
+
+fn usage_resets_at<'a>(data: &'a serde_json::Value, key: &str) -> Option<&'a str> {
+    data[key]["resets_at"]
+        .as_str()
+        .or_else(|| data[key]["reset_at"].as_str())
+}
+
+fn claude_org_uuid(data: &serde_json::Value) -> Option<String> {
+    data["memberships"]
+        .as_array()?
+        .iter()
+        .find_map(|membership| {
+            membership["organization"]["uuid"]
+                .as_str()
+                .or_else(|| membership["organization"]["organization_uuid"].as_str())
+                .or_else(|| membership["organization_uuid"].as_str())
+                .or_else(|| membership["uuid"].as_str())
+                .map(str::to_string)
+        })
+}
+
+fn claude_plan_label(
+    account: &serde_json::Value,
+    subscription: Option<&serde_json::Value>,
+    usage: &serde_json::Value,
+) -> &'static str {
+    if json_has_plan(account, &["max_plan", "claude_max", "max"]) ||
+        subscription.is_some_and(|s| json_has_plan(s, &["max_plan", "claude_max", "max"])) {
+        return "Max";
+    }
+
+    if json_has_plan(account, &["pro_plan", "claude_pro", "pro"]) ||
+        subscription.is_some_and(|s| json_has_plan(s, &["pro_plan", "claude_pro", "pro"])) {
+        return "Pro";
+    }
+
+    if json_has_plan(account, &["team_plan", "claude_team", "team"]) ||
+        subscription.is_some_and(|s| json_has_plan(s, &["team_plan", "claude_team", "team"])) {
+        return "Team";
+    }
+
+    if json_has_plan(account, &["enterprise_plan", "claude_enterprise", "enterprise"]) ||
+        subscription.is_some_and(|s| json_has_plan(s, &["enterprise_plan", "claude_enterprise", "enterprise"])) {
+        return "Enterprise";
+    }
+
+    if usage["seven_day"].is_object() || usage["seven_day_sonnet"].is_object() {
+        return "Pro";
+    }
+
+    "Free"
+}
+
+fn json_has_plan(value: &serde_json::Value, needles: &[&str]) -> bool {
+    match value {
+        serde_json::Value::String(s) => {
+            let normalized = s.to_ascii_lowercase();
+            needles.iter().any(|needle| {
+                normalized == *needle ||
+                    normalized == format!("{}_plan", needle) ||
+                    normalized.contains(&format!("{} plan", needle)) ||
+                    normalized.contains(&format!("claude {}", needle))
+            })
+        }
+        serde_json::Value::Array(items) => items.iter().any(|item| json_has_plan(item, needles)),
+        serde_json::Value::Object(map) => map.iter().any(|(key, item)| {
+            let key = key.to_ascii_lowercase();
+            (key.contains("plan") || key.contains("tier") || key.contains("subscription") || key.contains("flag")) &&
+                needles.iter().any(|needle| key.contains(needle)) ||
+                json_has_plan(item, needles)
+        }),
+        _ => false,
+    }
 }
 
 fn count_local_messages() -> u32 {
@@ -254,65 +287,145 @@ fn fmt_seconds(secs: f64) -> String {
 // Returns raw API JSON for debugging — lets us see actual field names
 #[tauri::command]
 async fn debug_claude_api(session_key: String) -> Result<String, String> {
-    let me = powershell_get_json("https://api.claude.ai/api/accounts/me", &session_key).await?;
+    let session_key = session_key.trim();
+    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
 
-    let org_uuid = me["memberships"]
-        .as_array()
-        .and_then(|m| m.first())
-        .and_then(|m| m["organization"]["uuid"].as_str())
-        .unwrap_or("")
-        .to_string();
+    let org_uuid = claude_org_uuid(&me).unwrap_or_default();
 
     if org_uuid.is_empty() {
         return Ok(format!("accounts/me response:\n{}", serde_json::to_string_pretty(&me).unwrap_or_default()));
     }
 
-    let limits = powershell_get_json(
-        &format!("https://api.claude.ai/api/organizations/{}/rate_limit_status", org_uuid),
-        &session_key,
+    let limits = claude_get_json(
+        &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
+        session_key,
     ).await?;
 
     Ok(serde_json::to_string_pretty(&limits).unwrap_or_default())
 }
 
-// ── OpenAI usage ──────────────────────────────────────────────────────────────
+// ── Codex usage ───────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
-pub struct OpenAIUsage {
-    pub tokens_used: u64,
-    pub requests: u64,
+pub struct CodexUsage {
+    pub plan: String,
+    pub five_hour_remaining_pct: Option<f64>,
+    pub five_hour_resets_at: Option<String>,
+    pub weekly_remaining_pct: Option<f64>,
+    pub weekly_resets_at: Option<String>,
 }
 
 #[tauri::command]
-async fn get_openai_usage(api_key: String) -> Result<OpenAIUsage, String> {
-    let today = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let client = reqwest::Client::new();
-    let resp = client
-        .get(format!("https://api.openai.com/v1/usage?date={}", today))
-        .header("Authorization", format!("Bearer {}", api_key))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+async fn get_codex_usage() -> Result<CodexUsage, String> {
+    let auth_path = dirs::home_dir()
+        .ok_or_else(|| "Could not find home directory".to_string())?
+        .join(".codex")
+        .join("auth.json");
 
-    if !resp.status().is_success() {
-        return Err(format!("OpenAI API {}", resp.status()));
+    let auth: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&auth_path)
+            .map_err(|_| "Sign in with Codex CLI first".to_string())?,
+    )
+    .map_err(|e| format!("Codex auth JSON parse: {e}"))?;
+
+    let access_token = auth["tokens"]["access_token"]
+        .as_str()
+        .ok_or_else(|| "Codex access token not found; sign in with Codex CLI again".to_string())?;
+    let account_id = auth["tokens"]["account_id"]
+        .as_str()
+        .or_else(|| auth["account_id"].as_str())
+        .unwrap_or_default();
+
+    let mut req = reqwest::Client::new()
+        .get("https://chatgpt.com/backend-api/wham/usage")
+        .header("Authorization", format!("Bearer {}", access_token))
+        .header("User-Agent", "codex-cli")
+        .header("Accept", "application/json");
+
+    if !account_id.is_empty() {
+        req = req.header("ChatGPT-Account-Id", account_id);
     }
 
-    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    let (tokens, requests) = data["data"]
-        .as_array()
-        .map(|arr| {
-            arr.iter().fold((0u64, 0u64), |(t, r), item| {
-                (
-                    t + item["n_context_tokens_total"].as_u64().unwrap_or(0)
-                        + item["n_generated_tokens_total"].as_u64().unwrap_or(0),
-                    r + item["n_requests"].as_u64().unwrap_or(0),
-                )
-            })
-        })
-        .unwrap_or((0, 0));
+    let resp = req.send().await.map_err(|e| e.to_string())?;
+    let status = resp.status();
+    let body = resp.text().await.map_err(|e| e.to_string())?;
+    if !status.is_success() {
+        return Err(format!(
+            "Codex usage API {}: {}",
+            status,
+            compact_error_body(&body)
+        ));
+    }
 
-    Ok(OpenAIUsage { tokens_used: tokens, requests })
+    let usage: serde_json::Value =
+        serde_json::from_str(body.trim()).map_err(|e| format!("Codex usage JSON parse: {e}"))?;
+
+    let primary = &usage["rate_limit"]["primary_window"];
+    let secondary = &usage["rate_limit"]["secondary_window"];
+
+    Ok(CodexUsage {
+        plan: codex_plan_label(usage["plan_type"].as_str().unwrap_or_default()),
+        five_hour_remaining_pct: codex_remaining_pct(primary),
+        five_hour_resets_at: codex_reset_at(primary, false),
+        weekly_remaining_pct: codex_remaining_pct(secondary),
+        weekly_resets_at: codex_reset_at(secondary, true),
+    })
+}
+
+fn codex_remaining_pct(window: &serde_json::Value) -> Option<f64> {
+    let used = window["used_percent"].as_f64()?;
+    Some((100.0 - used).clamp(0.0, 100.0))
+}
+
+fn codex_reset_at(window: &serde_json::Value, include_date: bool) -> Option<String> {
+    let reset_at = window["reset_at"].as_i64()?;
+    let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(reset_at, 0)?;
+    let local = dt.with_timezone(&chrono::Local);
+    Some(
+        if include_date {
+            local.format("%b %d, %Y %H:%M")
+        } else {
+            local.format("%H:%M")
+        }
+        .to_string(),
+    )
+}
+
+fn codex_plan_label(plan_type: &str) -> String {
+    match plan_type.to_ascii_lowercase().as_str() {
+        "free" => "Free".to_string(),
+        "plus" => "Plus".to_string(),
+        "pro" => "Pro".to_string(),
+        "team" => "Team".to_string(),
+        "enterprise" => "Enterprise".to_string(),
+        "" => String::new(),
+        other => {
+            let mut chars = other.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        }
+    }
+}
+
+fn compact_error_body(body: &str) -> String {
+    if let Ok(json) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(message) = json["error"]["message"].as_str() {
+            return message.to_string();
+        }
+        if let Some(message) = json["message"].as_str() {
+            return message.to_string();
+        }
+    }
+
+    let body = body.trim().replace('\r', " ").replace('\n', " ");
+    let preview: String = body.chars().take(220).collect();
+    if body.chars().count() > 220 {
+        format!("{}...", preview)
+    } else {
+        body
+    }
 }
 
 // ── Windows SMTC (desktop media controls) ────────────────────────────────────
@@ -496,7 +609,7 @@ pub fn run() {
             save_config,
             get_claude_usage,
             debug_claude_api,
-            get_openai_usage,
+            get_codex_usage,
             get_media_info,
             media_control,
         ])

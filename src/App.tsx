@@ -78,7 +78,7 @@ export default function App() {
         ) : (
           <>
             <ClaudeWidget config={config} />
-            <CodexWidget config={config} />
+            <CodexWidget />
             <MediaWidget />
           </>
         )}

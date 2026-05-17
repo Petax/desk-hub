@@ -177,7 +177,18 @@ input[type="range"] {
 
 .progress-fill.claude  { background: linear-gradient(90deg, #a855f7, #7c3aed); }
 .progress-fill.openai  { background: linear-gradient(90deg, #10b981, #059669); }
+.progress-fill.codex   { background: linear-gradient(90deg, #22c55e, #16a34a); }
 .progress-fill.spotify { background: #1db954; }
+
+.usage-limits {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.usage-limit .widget-main {
+  gap: 5px;
+}
 
 /* ── media / spotify widget ──────────────────────────────────────────────── */
 

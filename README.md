@@ -8,12 +8,13 @@ Desk HUD is a small Windows desktop overlay for keeping useful developer signals
 - Claude usage widget:
   - Uses a configured Claude `sessionKey` for live session and weekly usage when available.
   - Falls back to counting today's local Claude messages from `~/.claude/projects/**/*.jsonl`.
-- OpenAI / Codex usage widget:
-  - Reads today's token and request usage from the configured OpenAI API key.
+- Codex usage widget:
+  - Reads live Codex agentic usage limits from your local Codex CLI sign-in.
+  - Shows 5-hour remaining limit, weekly remaining limit, and reset times.
 - Media widget:
   - Uses Windows System Media Transport Controls.
   - Shows current track metadata, artwork, playback progress, and previous/play-pause/next controls.
-- Settings panel for API keys, Claude fallback limit, API debug output, and HUD opacity.
+- Settings panel for Claude auth, Claude fallback limit, API debug output, and HUD opacity.
 
 ## Requirements
 
@@ -21,6 +22,7 @@ Desk HUD is a small Windows desktop overlay for keeping useful developer signals
 - Node.js and npm
 - Rust toolchain
 - Tauri system prerequisites
+- Codex CLI sign-in for Codex usage status
 
 ## Setup
 
@@ -62,7 +64,7 @@ The settings panel supports:
 
 - `Claude session key`: optional `sessionKey` cookie from `claude.ai` for live usage data.
 - `Claude daily limit`: local fallback limit used when no Claude session key is configured.
-- `OpenAI API key`: optional API key for fetching today's OpenAI usage.
+- Codex usage uses `~/.codex/auth.json` from your local Codex CLI sign-in. No OpenAI Admin API key is needed.
 - `Background opacity`: live-previewed HUD background opacity.
 
 ## Project Structure

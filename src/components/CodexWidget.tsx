@@ -1,48 +1,89 @@
-import { useState, useEffect } from "react";
-import { getOpenAIUsage, fmtTokens } from "../api";
-import type { AppConfig, OpenAIUsage } from "../types";
+import { useEffect, useState } from "react";
+import { getCodexUsage } from "../api";
+import type { CodexUsage } from "../types";
 
-interface Props {
-  config: AppConfig;
+function pct(value?: number) {
+  return Math.round(Math.max(0, Math.min(100, value ?? 0)));
 }
 
-export function CodexWidget({ config }: Props) {
-  const [data, setData] = useState<OpenAIUsage | null>(null);
+function LimitRow({
+  label,
+  remaining,
+  resetsAt,
+}: {
+  label: string;
+  remaining?: number;
+  resetsAt?: string;
+}) {
+  const rounded = pct(remaining);
+
+  return (
+    <div className="usage-limit">
+      <div className="widget-main">
+        <span className="widget-value">{rounded}%</span>
+        <span className="widget-sub">{label}</span>
+        {resetsAt && <span className="widget-sub">resets {resetsAt}</span>}
+      </div>
+      <div className="progress-bar">
+        <div className="progress-fill codex" style={{ width: `${rounded}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export function CodexWidget() {
+  const [data, setData] = useState<CodexUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!config.openai_api_key) { setError("no_key"); return; }
     let cancelled = false;
+
     async function load() {
       try {
-        const u = await getOpenAIUsage(config.openai_api_key!);
-        if (!cancelled) { setData(u); setError(null); }
+        const usage = await getCodexUsage();
+        if (!cancelled) {
+          setData(usage);
+          setError(null);
+        }
       } catch (e) {
         if (!cancelled) setError(String(e));
       }
     }
+
     load();
     const id = setInterval(load, 120_000);
-    return () => { cancelled = true; clearInterval(id); };
-  }, [config.openai_api_key]);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   return (
-    <div className="widget">
+    <div className="widget codex-widget">
       <div className="widget-header">
-        <span className="widget-label">OpenAI / Codex</span>
-        {data && <span className="widget-status">today</span>}
+        <span className="widget-label">
+          Codex{data?.plan ? ` - ${data.plan}` : ""}
+        </span>
+        {data && <span className="widget-status">live</span>}
       </div>
-      {error === "no_key" ? (
-        <span className="widget-muted">Add API key in ⚙</span>
-      ) : error ? (
+
+      {error ? (
         <span className="widget-error">{error}</span>
       ) : data ? (
-        <div className="widget-main">
-          <span className="widget-value">{fmtTokens(data.tokens_used)}</span>
-          <span className="widget-sub">tokens · {data.requests} req</span>
+        <div className="usage-limits">
+          <LimitRow
+            label="5h remaining"
+            remaining={data.five_hour_remaining_pct}
+            resetsAt={data.five_hour_resets_at}
+          />
+          <LimitRow
+            label="weekly remaining"
+            remaining={data.weekly_remaining_pct}
+            resetsAt={data.weekly_resets_at}
+          />
         </div>
       ) : (
-        <span className="widget-muted">loading…</span>
+        <span className="widget-muted">loading...</span>
       )}
     </div>
   );

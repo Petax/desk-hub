@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { getClaudeUsage } from "../api";
 import type { AppConfig, ClaudeUsage } from "../types";
 
@@ -6,10 +6,31 @@ interface Props {
   config: AppConfig;
 }
 
-function Bar({ pct, cls }: { pct: number; cls: string }) {
+function remainingPct(used?: number) {
+  return Math.round(Math.max(0, Math.min(100, 100 - (used ?? 0))));
+}
+
+function LimitRow({
+  label,
+  used,
+  resets,
+}: {
+  label: string;
+  used?: number;
+  resets?: string;
+}) {
+  const remaining = remainingPct(used);
+
   return (
-    <div className="progress-bar">
-      <div className={`progress-fill ${cls}`} style={{ width: `${Math.min(pct, 100)}%` }} />
+    <div className="usage-limit">
+      <div className="widget-main">
+        <span className="widget-value">{remaining}%</span>
+        <span className="widget-sub">{label}</span>
+        {resets && <span className="widget-sub">resets {resets}</span>}
+      </div>
+      <div className="progress-bar">
+        <div className="progress-fill claude" style={{ width: `${remaining}%` }} />
+      </div>
     </div>
   );
 }
@@ -20,60 +41,58 @@ export function ClaudeWidget({ config }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+
     async function load() {
       try {
-        const u = await getClaudeUsage();
-        if (!cancelled) { setData(u); setError(null); }
+        const usage = await getClaudeUsage();
+        if (!cancelled) {
+          setData(usage);
+          setError(null);
+        }
       } catch (e) {
         if (!cancelled) setError(String(e));
       }
     }
+
     load();
     const id = setInterval(load, 60_000);
-    return () => { cancelled = true; clearInterval(id); };
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, [config.claude_session_key]);
 
   return (
     <div className="widget">
       <div className="widget-header">
         <span className="widget-label">
-          Claude {data?.plan ? `· ${data.plan}` : ""}
+          Claude{data?.plan ? ` - ${data.plan}` : ""}
         </span>
-        {!config.claude_session_key && (
-          <span className="widget-status">local</span>
-        )}
+        <span className="widget-status">
+          {config.claude_session_key ? "live" : "local"}
+        </span>
       </div>
 
       {error ? (
         <span className="widget-error">{error}</span>
       ) : !data ? (
-        <span className="widget-muted">loading…</span>
+        <span className="widget-muted">loading...</span>
       ) : data.session_pct !== undefined ? (
-        // API mode — show session + weekly like the claude.ai page
-        <>
-          <div className="widget-main" style={{ marginBottom: 3 }}>
-            <span className="widget-value">{Math.round(data.session_pct)}%</span>
-            <span className="widget-sub">session used</span>
-            {data.session_resets_in && (
-              <span className="widget-sub">· resets {data.session_resets_in}</span>
-            )}
-          </div>
-          <Bar pct={data.session_pct} cls="claude" />
+        <div className="usage-limits">
+          <LimitRow
+            label="5h remaining"
+            used={data.session_pct}
+            resets={data.session_resets_in}
+          />
           {data.weekly_pct !== undefined && (
-            <>
-              <div className="widget-main" style={{ marginTop: 5, marginBottom: 3 }}>
-                <span className="widget-value">{Math.round(data.weekly_pct)}%</span>
-                <span className="widget-sub">weekly</span>
-                {data.weekly_resets_at && (
-                  <span className="widget-sub">· resets {data.weekly_resets_at}</span>
-                )}
-              </div>
-              <Bar pct={data.weekly_pct} cls="claude" />
-            </>
+            <LimitRow
+              label="weekly remaining"
+              used={data.weekly_pct}
+              resets={data.weekly_resets_at}
+            />
           )}
-        </>
+        </div>
       ) : (
-        // Fallback: local message count
         <>
           <div className="widget-main">
             <span className="widget-value">
@@ -81,8 +100,18 @@ export function ClaudeWidget({ config }: Props) {
             </span>
             <span className="widget-sub">msgs today</span>
           </div>
-          <Bar pct={((data.local_messages ?? 0) / data.local_limit) * 100} cls="claude" />
-          <div className="widget-hint">Add session key in ⚙ for live %</div>
+          <div className="progress-bar">
+            <div
+              className="progress-fill claude"
+              style={{
+                width: `${Math.min(
+                  ((data.local_messages ?? 0) / data.local_limit) * 100,
+                  100,
+                )}%`,
+              }}
+            />
+          </div>
+          <div className="widget-hint">Add session key in settings for live limits</div>
         </>
       )}
     </div>

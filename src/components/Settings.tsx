@@ -20,12 +20,15 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
   function handleOpacity(raw: string) {
     const v = parseFloat(raw);
     set("opacity", v);
-    onOpacityPreview(v); // live preview without saving
+    onOpacityPreview(v);
   }
 
   async function runDebug() {
     const key = form.claude_session_key;
-    if (!key) { setDebugOutput("No session key set."); return; }
+    if (!key) {
+      setDebugOutput("No session key set.");
+      return;
+    }
     setDebugging(true);
     setDebugOutput(null);
     try {
@@ -42,31 +45,27 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
 
   return (
     <div className="settings">
-      {/* Claude */}
       <div className="settings-group">
         <label className="settings-label">Claude session key</label>
         <input
           className="settings-input"
           type="password"
-          placeholder="sk-ant-sid01-…"
+          placeholder="sk-ant-sid01-..."
           value={form.claude_session_key ?? ""}
           onChange={(e) => set("claude_session_key", e.target.value || undefined)}
         />
         <span className="settings-hint">
-          DevTools → Application → Cookies → claude.ai → <em>sessionKey</em>
+          DevTools - Application - Cookies - claude.ai - sessionKey
         </span>
       </div>
 
       <div className="settings-row">
         <button className="btn-secondary" onClick={runDebug} disabled={debugging}>
-          {debugging ? "fetching…" : "Debug API response →"}
+          {debugging ? "fetching..." : "Debug API response"}
         </button>
       </div>
 
-      {/* Debug output grows to fill available space */}
-      {debugOutput !== null && (
-        <pre className="debug-output">{debugOutput}</pre>
-      )}
+      {debugOutput !== null && <pre className="debug-output">{debugOutput}</pre>}
 
       <div className="settings-group">
         <label className="settings-label">Claude daily limit (msg fallback)</label>
@@ -78,22 +77,13 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
         />
       </div>
 
-      {/* OpenAI */}
-      <div className="settings-group">
-        <label className="settings-label">OpenAI API key</label>
-        <input
-          className="settings-input"
-          type="password"
-          placeholder="sk-…"
-          value={form.openai_api_key ?? ""}
-          onChange={(e) => set("openai_api_key", e.target.value || undefined)}
-        />
+      <div className="settings-hint">
+        Codex: uses your local Codex CLI sign-in from ~/.codex/auth.json.
       </div>
 
-      {/* Opacity — live preview */}
       <div className="settings-group">
         <label className="settings-label">
-          Background opacity — {Math.round(opacity * 100)}%
+          Background opacity - {Math.round(opacity * 100)}%
         </label>
         <input
           type="range"
@@ -107,7 +97,7 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
       </div>
 
       <div className="settings-hint">
-        Media: Windows SMTC — auto-detects Spotify, browser, etc.
+        Media: Windows SMTC - auto-detects Spotify, browser, etc.
       </div>
 
       <div className="settings-row">
