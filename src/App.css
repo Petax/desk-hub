@@ -56,7 +56,7 @@ input[type="range"] {
 .titlebar-drag {
   flex: 1;
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.25);
+  color: rgba(255, 255, 255, 0.4);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -129,13 +129,13 @@ input[type="range"] {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.5);
   flex: 1;
 }
 
 .widget-status {
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .widget-main {
@@ -153,12 +153,12 @@ input[type="range"] {
 
 .widget-sub {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.5);
 }
 
-.widget-error  { font-size: 10px; color: rgba(255, 100, 100, 0.7); font-style: italic; }
-.widget-muted  { font-size: 10px; color: rgba(255, 255, 255, 0.2); font-style: italic; }
-.widget-hint   { font-size: 9px; color: rgba(255, 255, 255, 0.18); margin-top: 3px; font-style: italic; }
+.widget-error  { font-size: 10px; color: rgba(255, 100, 100, 0.85); font-style: italic; }
+.widget-muted  { font-size: 10px; color: rgba(255, 255, 255, 0.38); font-style: italic; }
+.widget-hint   { font-size: 9px; color: rgba(255, 255, 255, 0.32); margin-top: 3px; font-style: italic; }
 
 /* progress bar */
 .progress-bar {
@@ -175,9 +175,9 @@ input[type="range"] {
   transition: width 0.4s ease;
 }
 
-.progress-fill.claude  { background: linear-gradient(90deg, #a855f7, #7c3aed); }
+.progress-fill.claude  { background: linear-gradient(90deg, #e07b39, #c85a1e); }
 .progress-fill.openai  { background: linear-gradient(90deg, #10b981, #059669); }
-.progress-fill.codex   { background: linear-gradient(90deg, #22c55e, #16a34a); }
+.progress-fill.codex   { background: linear-gradient(90deg, #e2e8f0, #94a3b8); }
 .progress-fill.spotify { background: #1db954; }
 
 .usage-limits {
@@ -246,7 +246,7 @@ input[type="range"] {
 
 .spotify-artist {
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.4);
+  color: rgba(255, 255, 255, 0.58);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -256,7 +256,7 @@ input[type="range"] {
 .spotify-time {
   flex-shrink: 0;
   font-size: 10px;
-  color: rgba(255, 255, 255, 0.36);
+  color: rgba(255, 255, 255, 0.52);
   text-align: right;
   white-space: nowrap;
 }
@@ -321,7 +321,7 @@ input[type="range"] {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.5);
 }
 
 .settings-input {
@@ -386,7 +386,7 @@ input[type="range"].settings-input {
 
 .settings-hint {
   font-size: 9px;
-  color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.38);
   line-height: 1.45;
 }
 

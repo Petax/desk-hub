@@ -93,8 +93,15 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
         />
       </div>
 
-      <div className="settings-hint">
-        Media: Windows SMTC - auto-detects Spotify, browser, etc.
+      <div className="settings-group">
+        <label className="settings-label" style={{ display: "flex", alignItems: "center", gap: "0.4em", cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={form.show_media ?? true}
+            onChange={(e) => set("show_media", e.target.checked)}
+          />
+          Show media widget (Spotify / SMTC)
+        </label>
       </div>
 
       <div className="settings-row">

@@ -9,6 +9,7 @@ use tauri::{AppHandle, Manager, Window};
 pub struct AppConfig {
     pub claude_session_key: Option<String>,
     pub claude_daily_limit: Option<u32>,
+    pub show_media: Option<bool>,
     pub opacity: Option<f64>,
 }
 

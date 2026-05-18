@@ -79,7 +79,7 @@ export default function App() {
           <>
             <ClaudeWidget config={config} />
             <CodexWidget />
-            <MediaWidget />
+            {(config.show_media ?? true) && <MediaWidget />}
           </>
         )}
       </div>
