@@ -63,7 +63,7 @@ export function CodexWidget() {
 
   async function handleRefresh() {
     setSpinning(true);
-    await loadRef.current();
+    await Promise.all([loadRef.current(), new Promise((r) => setTimeout(r, 400))]);
     setSpinning(false);
   }
 
