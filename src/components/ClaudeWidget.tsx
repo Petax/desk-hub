@@ -55,7 +55,7 @@ export function ClaudeWidget({ config }: Props) {
     }
 
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(load, 300_000);
     return () => {
       cancelled = true;
       clearInterval(id);
@@ -68,9 +68,7 @@ export function ClaudeWidget({ config }: Props) {
         <span className="widget-label">
           Claude{data?.plan ? ` - ${data.plan}` : ""}
         </span>
-        <span className="widget-status">
-          {config.claude_session_key ? "live" : "local"}
-        </span>
+        <span className="widget-status">{config.claude_session_key ? "live" : "local"}</span>
       </div>
 
       {error ? (

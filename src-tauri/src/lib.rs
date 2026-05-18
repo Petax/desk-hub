@@ -43,6 +43,12 @@ fn toggle_always_on_top(window: Window, on_top: bool) -> Result<(), String> {
     window.set_always_on_top(on_top).map_err(|e| e.to_string())
 }
 
+fn cli_org_uuid() -> Option<String> {
+    let creds_path = dirs::home_dir()?.join(".claude").join(".credentials.json");
+    let creds: serde_json::Value = serde_json::from_str(&fs::read_to_string(creds_path).ok()?).ok()?;
+    creds["organizationUuid"].as_str().map(str::to_string)
+}
+
 // ── Claude.ai session usage ───────────────────────────────────────────────────
 
 #[derive(Serialize, Default)]
@@ -62,14 +68,12 @@ async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
     let config = get_config(app);
     let local_limit = config.claude_daily_limit.unwrap_or(500);
 
-    // Try the claude.ai API if a session key is configured
     if let Some(session_key) = config.claude_session_key.as_deref() {
         if !session_key.trim().is_empty() {
             return fetch_claude_api(session_key.trim(), local_limit).await;
         }
     }
 
-    // Fallback: count today's user messages from local JSONL files
     let local_messages = count_local_messages();
     Ok(ClaudeUsage {
         plan: String::new(),
@@ -77,6 +81,36 @@ async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
         local_limit,
         ..Default::default()
     })
+}
+
+async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeUsage, String> {
+    let org_uuid = match cli_org_uuid() {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
+            claude_org_uuid(&me).ok_or_else(|| "Could not find org UUID".to_string())?
+        }
+    };
+
+    let subscription = claude_get_json(
+        &format!("https://claude.ai/api/organizations/{}/subscription_details", org_uuid),
+        session_key,
+    ).await.ok();
+
+    let limits = claude_get_json(
+        &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
+        session_key,
+    ).await?;
+
+    let session_pct = usage_pct(&limits, "five_hour");
+    let session_resets_in = usage_resets_at(&limits, "five_hour").map(fmt_resets_in);
+    let weekly_pct = usage_pct(&limits, "seven_day");
+    let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(fmt_resets_at);
+
+    let me = serde_json::Value::Null;
+    let plan = claude_plan_label(&me, subscription.as_ref(), &limits).to_string();
+
+    Ok(ClaudeUsage { plan, session_pct, session_resets_in, weekly_pct, weekly_resets_at, local_messages: None, local_limit })
 }
 
 async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Value, String> {
@@ -89,138 +123,68 @@ async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Val
         .send()
         .await
         .map_err(|e| e.to_string())?;
-
     let status = resp.status();
     let body = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
         return Err(format!("Claude API {}: {}", status, compact_error_body(&body)));
     }
-
     serde_json::from_str(body.trim()).map_err(|e| format!("Claude JSON parse: {e}"))
 }
 
-async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeUsage, String> {
-    // Step 1: get account info and org UUID
-    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
-
-    let org_uuid = claude_org_uuid(&me).unwrap_or_default();
-
-    if org_uuid.is_empty() {
-        return Err("Could not find org UUID".to_string());
-    }
-
-    let subscription = claude_get_json(
-        &format!("https://claude.ai/api/organizations/{}/subscription_details", org_uuid),
-        session_key,
-    )
-    .await
-    .ok();
-
-    // Step 2: get live usage for the org, matching the claude.ai usage settings page.
-    let limits = claude_get_json(
-        &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
-        session_key,
-    ).await?;
-
-    let session_pct = usage_pct(&limits, "five_hour");
-    let session_resets_in = usage_resets_at(&limits, "five_hour").map(fmt_resets_in);
-
-    let weekly_pct = usage_pct(&limits, "seven_day");
-    let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(fmt_resets_at);
-    let plan = claude_plan_label(&me, subscription.as_ref(), &limits).to_string();
-
-    Ok(ClaudeUsage {
-        plan,
-        session_pct,
-        session_resets_in,
-        weekly_pct,
-        weekly_resets_at,
-        local_messages: None,
-        local_limit,
-    })
-}
-
 fn usage_pct(data: &serde_json::Value, key: &str) -> Option<f64> {
-    data[key]["utilization"]
-        .as_f64()
+    data[key]["utilization"].as_f64()
         .or_else(|| data[key]["utilization_pct"].as_f64())
         .or_else(|| data[key]["percent_used"].as_f64())
         .map(|v| if v <= 1.0 { v * 100.0 } else { v })
 }
 
 fn usage_resets_at<'a>(data: &'a serde_json::Value, key: &str) -> Option<&'a str> {
-    data[key]["resets_at"]
-        .as_str()
-        .or_else(|| data[key]["reset_at"].as_str())
+    data[key]["resets_at"].as_str().or_else(|| data[key]["reset_at"].as_str())
 }
 
 fn claude_org_uuid(data: &serde_json::Value) -> Option<String> {
-    data["memberships"]
-        .as_array()?
-        .iter()
-        .find_map(|membership| {
-            membership["organization"]["uuid"]
-                .as_str()
-                .or_else(|| membership["organization"]["organization_uuid"].as_str())
-                .or_else(|| membership["organization_uuid"].as_str())
-                .or_else(|| membership["uuid"].as_str())
-                .map(str::to_string)
-        })
+    data["memberships"].as_array()?.iter().find_map(|m| {
+        m["organization"]["uuid"].as_str()
+            .or_else(|| m["organization"]["organization_uuid"].as_str())
+            .or_else(|| m["organization_uuid"].as_str())
+            .or_else(|| m["uuid"].as_str())
+            .map(str::to_string)
+    })
 }
 
-fn claude_plan_label(
-    account: &serde_json::Value,
-    subscription: Option<&serde_json::Value>,
-    usage: &serde_json::Value,
-) -> &'static str {
-    if json_has_plan(account, &["max_plan", "claude_max", "max"]) ||
-        subscription.is_some_and(|s| json_has_plan(s, &["max_plan", "claude_max", "max"])) {
-        return "Max";
-    }
-
-    if json_has_plan(account, &["pro_plan", "claude_pro", "pro"]) ||
-        subscription.is_some_and(|s| json_has_plan(s, &["pro_plan", "claude_pro", "pro"])) {
-        return "Pro";
-    }
-
-    if json_has_plan(account, &["team_plan", "claude_team", "team"]) ||
-        subscription.is_some_and(|s| json_has_plan(s, &["team_plan", "claude_team", "team"])) {
-        return "Team";
-    }
-
-    if json_has_plan(account, &["enterprise_plan", "claude_enterprise", "enterprise"]) ||
-        subscription.is_some_and(|s| json_has_plan(s, &["enterprise_plan", "claude_enterprise", "enterprise"])) {
-        return "Enterprise";
-    }
-
-    if usage["seven_day"].is_object() || usage["seven_day_sonnet"].is_object() {
-        return "Pro";
-    }
-
+fn claude_plan_label(account: &serde_json::Value, subscription: Option<&serde_json::Value>, usage: &serde_json::Value) -> &'static str {
+    if json_has_plan(account, &["max_plan", "claude_max", "max"]) || subscription.is_some_and(|s| json_has_plan(s, &["max_plan", "claude_max", "max"])) { return "Max"; }
+    if json_has_plan(account, &["pro_plan", "claude_pro", "pro"]) || subscription.is_some_and(|s| json_has_plan(s, &["pro_plan", "claude_pro", "pro"])) { return "Pro"; }
+    if json_has_plan(account, &["team_plan", "claude_team", "team"]) || subscription.is_some_and(|s| json_has_plan(s, &["team_plan", "claude_team", "team"])) { return "Team"; }
+    if json_has_plan(account, &["enterprise_plan", "claude_enterprise", "enterprise"]) || subscription.is_some_and(|s| json_has_plan(s, &["enterprise_plan", "claude_enterprise", "enterprise"])) { return "Enterprise"; }
+    if usage["seven_day"].is_object() || usage["seven_day_sonnet"].is_object() { return "Pro"; }
     "Free"
 }
 
 fn json_has_plan(value: &serde_json::Value, needles: &[&str]) -> bool {
     match value {
-        serde_json::Value::String(s) => {
-            let normalized = s.to_ascii_lowercase();
-            needles.iter().any(|needle| {
-                normalized == *needle ||
-                    normalized == format!("{}_plan", needle) ||
-                    normalized.contains(&format!("{} plan", needle)) ||
-                    normalized.contains(&format!("claude {}", needle))
-            })
-        }
-        serde_json::Value::Array(items) => items.iter().any(|item| json_has_plan(item, needles)),
-        serde_json::Value::Object(map) => map.iter().any(|(key, item)| {
-            let key = key.to_ascii_lowercase();
-            (key.contains("plan") || key.contains("tier") || key.contains("subscription") || key.contains("flag")) &&
-                needles.iter().any(|needle| key.contains(needle)) ||
-                json_has_plan(item, needles)
-        }),
+        serde_json::Value::String(s) => { let n = s.to_ascii_lowercase(); needles.iter().any(|needle| n == *needle || n == format!("{}_plan", needle) || n.contains(&format!("{} plan", needle)) || n.contains(&format!("claude {}", needle))) }
+        serde_json::Value::Array(items) => items.iter().any(|i| json_has_plan(i, needles)),
+        serde_json::Value::Object(map) => map.iter().any(|(k, v)| { let k = k.to_ascii_lowercase(); (k.contains("plan") || k.contains("tier") || k.contains("subscription") || k.contains("flag")) && needles.iter().any(|n| k.contains(n)) || json_has_plan(v, needles) }),
         _ => false,
     }
 }
+
+fn fmt_resets_in(iso: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
+        let secs = (dt.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_seconds().max(0);
+        return fmt_seconds(secs as f64);
+    }
+    iso.to_string()
+}
+
+fn fmt_resets_at(iso: &str) -> String {
+    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
+        return dt.with_timezone(&chrono::Local).format("%a %H:%M").to_string();
+    }
+    iso.to_string()
+}
+
 
 fn count_local_messages() -> u32 {
     use glob::glob;
@@ -253,26 +217,6 @@ fn count_local_messages() -> u32 {
     count
 }
 
-fn fmt_resets_in(iso: &str) -> String {
-    // iso is an ISO8601 datetime; compute duration from now
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
-        let now = chrono::Utc::now();
-        let secs = (dt.with_timezone(&chrono::Utc) - now).num_seconds().max(0);
-        return fmt_seconds(secs as f64);
-    }
-    iso.to_string()
-}
-
-fn fmt_resets_at(iso: &str) -> String {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
-        return dt
-            .with_timezone(&chrono::Local)
-            .format("%a %H:%M")
-            .to_string();
-    }
-    iso.to_string()
-}
-
 fn fmt_seconds(secs: f64) -> String {
     let s = secs as u64;
     let h = s / 3600;
@@ -284,23 +228,23 @@ fn fmt_seconds(secs: f64) -> String {
     }
 }
 
-// Returns raw API JSON for debugging — lets us see actual field names
 #[tauri::command]
 async fn debug_claude_api(session_key: String) -> Result<String, String> {
     let session_key = session_key.trim();
-    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
-
-    let org_uuid = claude_org_uuid(&me).unwrap_or_default();
-
+    let org_uuid = match cli_org_uuid() {
+        Some(id) if !id.is_empty() => id,
+        _ => {
+            let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
+            claude_org_uuid(&me).unwrap_or_default()
+        }
+    };
     if org_uuid.is_empty() {
-        return Ok(format!("accounts/me response:\n{}", serde_json::to_string_pretty(&me).unwrap_or_default()));
+        return Err("Could not find org UUID".to_string());
     }
-
     let limits = claude_get_json(
         &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
         session_key,
     ).await?;
-
     Ok(serde_json::to_string_pretty(&limits).unwrap_or_default())
 }
 

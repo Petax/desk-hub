@@ -25,10 +25,7 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
 
   async function runDebug() {
     const key = form.claude_session_key;
-    if (!key) {
-      setDebugOutput("No session key set.");
-      return;
-    }
+    if (!key) { setDebugOutput("No session key set."); return; }
     setDebugging(true);
     setDebugOutput(null);
     try {
@@ -55,7 +52,7 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
           onChange={(e) => set("claude_session_key", e.target.value || undefined)}
         />
         <span className="settings-hint">
-          DevTools - Application - Cookies - claude.ai - sessionKey
+          DevTools → Application → Cookies → claude.ai → sessionKey
         </span>
       </div>
 
