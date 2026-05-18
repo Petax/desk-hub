@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getCodexUsage } from "../api";
 import type { CodexUsage } from "../types";
 
@@ -34,6 +34,8 @@ function LimitRow({
 export function CodexWidget() {
   const [data, setData] = useState<CodexUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const loadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +52,7 @@ export function CodexWidget() {
       }
     }
 
+    loadRef.current = load;
     load();
     const id = setInterval(load, 120_000);
     return () => {
@@ -58,6 +61,12 @@ export function CodexWidget() {
     };
   }, []);
 
+  async function handleRefresh() {
+    setSpinning(true);
+    await loadRef.current();
+    setSpinning(false);
+  }
+
   return (
     <div className="widget codex-widget">
       <div className="widget-header">
@@ -65,6 +74,7 @@ export function CodexWidget() {
           Codex{data?.plan ? ` - ${data.plan}` : ""}
         </span>
         {data && <span className="widget-status">live</span>}
+        <button className={`btn-icon refresh-btn${spinning ? " spinning" : ""}`} title="Refresh" onClick={handleRefresh}>↻</button>
       </div>
 
       {error ? (

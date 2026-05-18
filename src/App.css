@@ -156,6 +156,24 @@ input[type="range"] {
   color: rgba(255, 255, 255, 0.5);
 }
 
+.refresh-btn {
+  font-size: 13px;
+  padding: 0 2px;
+  margin-left: 2px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.refresh-btn.spinning {
+  animation: spin 0.6s linear infinite;
+  pointer-events: none;
+}
+
 .widget-error  { font-size: 10px; color: rgba(255, 100, 100, 0.85); font-style: italic; }
 .widget-muted  { font-size: 10px; color: rgba(255, 255, 255, 0.38); font-style: italic; }
 .widget-hint   { font-size: 9px; color: rgba(255, 255, 255, 0.32); margin-top: 3px; font-style: italic; }

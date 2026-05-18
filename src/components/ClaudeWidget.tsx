@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getClaudeUsage } from "../api";
 import type { AppConfig, ClaudeUsage } from "../types";
 
@@ -38,6 +38,8 @@ function LimitRow({
 export function ClaudeWidget({ config }: Props) {
   const [data, setData] = useState<ClaudeUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [spinning, setSpinning] = useState(false);
+  const loadRef = useRef<() => void>(() => {});
 
   useEffect(() => {
     let cancelled = false;
@@ -54,6 +56,7 @@ export function ClaudeWidget({ config }: Props) {
       }
     }
 
+    loadRef.current = load;
     load();
     const id = setInterval(load, 300_000);
     return () => {
@@ -62,6 +65,12 @@ export function ClaudeWidget({ config }: Props) {
     };
   }, [config.claude_session_key]);
 
+  async function handleRefresh() {
+    setSpinning(true);
+    await loadRef.current();
+    setSpinning(false);
+  }
+
   return (
     <div className="widget">
       <div className="widget-header">
@@ -69,6 +78,7 @@ export function ClaudeWidget({ config }: Props) {
           Claude{data?.plan ? ` - ${data.plan}` : ""}
         </span>
         <span className="widget-status">{config.claude_session_key ? "live" : "local"}</span>
+        <button className={`btn-icon refresh-btn${spinning ? " spinning" : ""}`} title="Refresh" onClick={handleRefresh}>↻</button>
       </div>
 
       {error ? (
