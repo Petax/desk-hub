@@ -311,9 +311,9 @@ async fn get_codex_usage() -> Result<CodexUsage, String> {
     Ok(CodexUsage {
         plan: codex_plan_label(usage["plan_type"].as_str().unwrap_or_default()),
         five_hour_remaining_pct: codex_remaining_pct(primary),
-        five_hour_resets_at: codex_reset_at(primary, false),
+        five_hour_resets_at: codex_reset_at(primary, true),
         weekly_remaining_pct: codex_remaining_pct(secondary),
-        weekly_resets_at: codex_reset_at(secondary, true),
+        weekly_resets_at: codex_reset_at(secondary, false),
     })
 }
 
@@ -322,18 +322,15 @@ fn codex_remaining_pct(window: &serde_json::Value) -> Option<f64> {
     Some((100.0 - used).clamp(0.0, 100.0))
 }
 
-fn codex_reset_at(window: &serde_json::Value, include_date: bool) -> Option<String> {
+fn codex_reset_at(window: &serde_json::Value, countdown: bool) -> Option<String> {
     let reset_at = window["reset_at"].as_i64()?;
     let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(reset_at, 0)?;
-    let local = dt.with_timezone(&chrono::Local);
-    Some(
-        if include_date {
-            local.format("%b %d, %Y %H:%M")
-        } else {
-            local.format("%H:%M")
-        }
-        .to_string(),
-    )
+    if countdown {
+        let secs = (dt - chrono::Utc::now()).num_seconds().max(0);
+        Some(fmt_seconds(secs as f64))
+    } else {
+        Some(dt.with_timezone(&chrono::Local).format("%a %H:%M").to_string())
+    }
 }
 
 fn codex_plan_label(plan_type: &str) -> String {
