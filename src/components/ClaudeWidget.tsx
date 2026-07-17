@@ -1,38 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { getClaudeUsage } from "../api";
 import type { AppConfig, ClaudeUsage } from "../types";
+import { useNowMs } from "../usage";
+import { UsageLimitRow } from "./UsageLimitRow";
 
 interface Props {
   config: AppConfig;
-}
-
-function remainingPct(used?: number) {
-  return Math.round(Math.max(0, Math.min(100, 100 - (used ?? 0))));
-}
-
-function LimitRow({
-  label,
-  used,
-  resets,
-}: {
-  label: string;
-  used?: number;
-  resets?: string;
-}) {
-  const remaining = remainingPct(used);
-
-  return (
-    <div className="usage-limit">
-      <div className="widget-main">
-        <span className="widget-value">{remaining}%</span>
-        <span className="widget-sub">{label}</span>
-        {resets && <span className="widget-sub">resets {resets}</span>}
-      </div>
-      <div className="progress-bar">
-        <div className="progress-fill claude" style={{ width: `${remaining}%` }} />
-      </div>
-    </div>
-  );
 }
 
 export function ClaudeWidget({ config }: Props) {
@@ -40,6 +13,7 @@ export function ClaudeWidget({ config }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
   const loadRef = useRef<() => void>(() => {});
+  const nowMs = useNowMs();
 
   useEffect(() => {
     let cancelled = false;
@@ -87,16 +61,22 @@ export function ClaudeWidget({ config }: Props) {
         <span className="widget-muted">loading...</span>
       ) : data.session_pct !== undefined ? (
         <div className="usage-limits">
-          <LimitRow
+          <UsageLimitRow
             label="5h remaining"
-            used={data.session_pct}
-            resets={data.session_resets_in}
+            usedPct={data.session_pct}
+            resetAt={data.session_resets_at}
+            windowHours={5}
+            nowMs={nowMs}
+            color="claude"
           />
           {data.weekly_pct !== undefined && (
-            <LimitRow
+            <UsageLimitRow
               label="weekly remaining"
-              used={data.weekly_pct}
-              resets={data.weekly_resets_at}
+              usedPct={data.weekly_pct}
+              resetAt={data.weekly_resets_at}
+              windowHours={24 * 7}
+              nowMs={nowMs}
+              color="claude"
             />
           )}
         </div>

@@ -8,7 +8,7 @@ export interface AppConfig {
 export interface ClaudeUsage {
   plan: string;
   session_pct?: number;
-  session_resets_in?: string;
+  session_resets_at?: string;
   weekly_pct?: number;
   weekly_resets_at?: string;
   local_messages?: number;

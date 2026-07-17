@@ -12,6 +12,8 @@ Desk HUD is a small Windows desktop overlay for keeping useful developer signals
 - Codex usage widget:
   - Reads live Codex agentic usage limits from your local Codex CLI sign-in.
   - Shows 5-hour remaining limit, weekly remaining limit, and reset times.
+- Usage windows show a live countdown during the final 24 hours before reset.
+- Each live usage window estimates your current pace and shows whether you are on track to stay within the limit or at risk of exceeding it.
 - Media widget:
   - Uses Windows System Media Transport Controls.
   - Shows current track metadata, artwork, playback progress, and previous/play-pause/next controls.
@@ -44,6 +46,23 @@ Run the full Tauri desktop app:
 ```bash
 npm run tauri dev
 ```
+
+## Package a Windows test build
+
+Create an installable release build:
+
+```bash
+npm run tauri build
+```
+
+The installers are written to:
+
+```text
+src-tauri/target/release/bundle/nsis/desk-hud_0.1.1_x64-setup.exe
+src-tauri/target/release/bundle/msi/desk-hud_0.1.1_x64_en-US.msi
+```
+
+Use the NSIS `.exe` for normal testing and sharing. The MSI is useful for managed Windows installation. The app still needs the tester's own Claude session key and Codex CLI sign-in to show live usage data.
 
 Build the frontend:
 
@@ -82,3 +101,4 @@ public/              Static frontend assets
 - The media widget is Windows-only because it uses SMTC APIs.
 - API keys and session cookies are stored locally by the app and should not be committed.
 - This is an early personal utility, so some usage APIs may need adjustment as upstream services change.
+- Pace projections are linear estimates based on usage so far in the current 5-hour or 7-day window; they are guidance rather than provider guarantees.

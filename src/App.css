@@ -208,6 +208,20 @@ input[type="range"] {
   gap: 5px;
 }
 
+.usage-forecast {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.usage-forecast-status {
+  font-size: 9px;
+}
+
+.usage-forecast-status.on-track { color: rgba(110, 231, 183, 0.78); }
+.usage-forecast-status.at-risk { color: rgba(251, 146, 60, 0.9); }
+
 /* ── media / spotify widget ──────────────────────────────────────────────── */
 
 .spotify-widget {

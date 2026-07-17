@@ -56,7 +56,7 @@ fn cli_org_uuid() -> Option<String> {
 pub struct ClaudeUsage {
     pub plan: String,
     pub session_pct: Option<f64>,
-    pub session_resets_in: Option<String>,
+    pub session_resets_at: Option<String>,
     pub weekly_pct: Option<f64>,
     pub weekly_resets_at: Option<String>,
     // Fallback: local message count
@@ -104,14 +104,14 @@ async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeU
     ).await?;
 
     let session_pct = usage_pct(&limits, "five_hour");
-    let session_resets_in = usage_resets_at(&limits, "five_hour").map(fmt_resets_in);
+    let session_resets_at = usage_resets_at(&limits, "five_hour").map(str::to_string);
     let weekly_pct = usage_pct(&limits, "seven_day");
-    let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(fmt_resets_at);
+    let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(str::to_string);
 
     let me = serde_json::Value::Null;
     let plan = claude_plan_label(&me, subscription.as_ref(), &limits).to_string();
 
-    Ok(ClaudeUsage { plan, session_pct, session_resets_in, weekly_pct, weekly_resets_at, local_messages: None, local_limit })
+    Ok(ClaudeUsage { plan, session_pct, session_resets_at, weekly_pct, weekly_resets_at, local_messages: None, local_limit })
 }
 
 async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Value, String> {
@@ -171,22 +171,6 @@ fn json_has_plan(value: &serde_json::Value, needles: &[&str]) -> bool {
     }
 }
 
-fn fmt_resets_in(iso: &str) -> String {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
-        let secs = (dt.with_timezone(&chrono::Utc) - chrono::Utc::now()).num_seconds().max(0);
-        return fmt_seconds(secs as f64);
-    }
-    iso.to_string()
-}
-
-fn fmt_resets_at(iso: &str) -> String {
-    if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(iso) {
-        return dt.with_timezone(&chrono::Local).format("%a %H:%M").to_string();
-    }
-    iso.to_string()
-}
-
-
 fn count_local_messages() -> u32 {
     use glob::glob;
     use std::io::{BufRead, BufReader};
@@ -216,17 +200,6 @@ fn count_local_messages() -> u32 {
         }
     }
     count
-}
-
-fn fmt_seconds(secs: f64) -> String {
-    let s = secs as u64;
-    let h = s / 3600;
-    let m = (s % 3600) / 60;
-    if h > 0 {
-        format!("{}h {}m", h, m)
-    } else {
-        format!("{}m", m)
-    }
 }
 
 #[tauri::command]
@@ -311,9 +284,9 @@ async fn get_codex_usage() -> Result<CodexUsage, String> {
     Ok(CodexUsage {
         plan: codex_plan_label(usage["plan_type"].as_str().unwrap_or_default()),
         five_hour_remaining_pct: codex_remaining_pct(primary),
-        five_hour_resets_at: codex_reset_at(primary, true),
+        five_hour_resets_at: codex_reset_at(primary),
         weekly_remaining_pct: codex_remaining_pct(secondary),
-        weekly_resets_at: codex_reset_at(secondary, false),
+        weekly_resets_at: codex_reset_at(secondary),
     })
 }
 
@@ -322,15 +295,10 @@ fn codex_remaining_pct(window: &serde_json::Value) -> Option<f64> {
     Some((100.0 - used).clamp(0.0, 100.0))
 }
 
-fn codex_reset_at(window: &serde_json::Value, countdown: bool) -> Option<String> {
+fn codex_reset_at(window: &serde_json::Value) -> Option<String> {
     let reset_at = window["reset_at"].as_i64()?;
     let dt = chrono::DateTime::<chrono::Utc>::from_timestamp(reset_at, 0)?;
-    if countdown {
-        let secs = (dt - chrono::Utc::now()).num_seconds().max(0);
-        Some(fmt_seconds(secs as f64))
-    } else {
-        Some(dt.with_timezone(&chrono::Local).format("%a %H:%M").to_string())
-    }
+    Some(dt.to_rfc3339())
 }
 
 fn codex_plan_label(plan_type: &str) -> String {
