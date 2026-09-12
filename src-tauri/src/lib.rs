@@ -44,12 +44,6 @@ fn toggle_always_on_top(window: Window, on_top: bool) -> Result<(), String> {
     window.set_always_on_top(on_top).map_err(|e| e.to_string())
 }
 
-fn cli_org_uuid() -> Option<String> {
-    let creds_path = dirs::home_dir()?.join(".claude").join(".credentials.json");
-    let creds: serde_json::Value = serde_json::from_str(&fs::read_to_string(creds_path).ok()?).ok()?;
-    creds["organizationUuid"].as_str().map(str::to_string)
-}
-
 // ── Claude.ai session usage ───────────────────────────────────────────────────
 
 #[derive(Serialize, Default)]
@@ -85,13 +79,8 @@ async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
 }
 
 async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeUsage, String> {
-    let org_uuid = match cli_org_uuid() {
-        Some(id) if !id.is_empty() => id,
-        _ => {
-            let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
-            claude_org_uuid(&me).ok_or_else(|| "Could not find org UUID".to_string())?
-        }
-    };
+    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
+    let org_uuid = claude_org_uuid(&me).ok_or_else(|| "Could not find org UUID".to_string())?;
 
     let subscription = claude_get_json(
         &format!("https://claude.ai/api/organizations/{}/subscription_details", org_uuid),
@@ -108,7 +97,6 @@ async fn fetch_claude_api(session_key: &str, local_limit: u32) -> Result<ClaudeU
     let weekly_pct = usage_pct(&limits, "seven_day");
     let weekly_resets_at = usage_resets_at(&limits, "seven_day").map(str::to_string);
 
-    let me = serde_json::Value::Null;
     let plan = claude_plan_label(&me, subscription.as_ref(), &limits).to_string();
 
     Ok(ClaudeUsage { plan, session_pct, session_resets_at, weekly_pct, weekly_resets_at, local_messages: None, local_limit })
@@ -121,6 +109,8 @@ async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Val
         .header("anthropic-client-type", "web")
         .header("Origin", "https://claude.ai")
         .header("Referer", "https://claude.ai/settings/usage")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36")
+        .header("Accept", "*/*")
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -144,13 +134,28 @@ fn usage_resets_at<'a>(data: &'a serde_json::Value, key: &str) -> Option<&'a str
 }
 
 fn claude_org_uuid(data: &serde_json::Value) -> Option<String> {
-    data["memberships"].as_array()?.iter().find_map(|m| {
+    let memberships = data["memberships"].as_array()?;
+
+    let org_uuid = |m: &serde_json::Value| -> Option<String> {
         m["organization"]["uuid"].as_str()
             .or_else(|| m["organization"]["organization_uuid"].as_str())
             .or_else(|| m["organization_uuid"].as_str())
             .or_else(|| m["uuid"].as_str())
             .map(str::to_string)
-    })
+    };
+
+    // Prefer a chat/Pro/Max/Team/Enterprise org over an API/Console-only org
+    // (accounts can have both, and the API org has no chat usage limits).
+    memberships.iter()
+        .find(|m| {
+            m["organization"]["capabilities"].as_array().is_some_and(|caps| {
+                caps.iter().any(|c| {
+                    matches!(c.as_str(), Some("chat") | Some("claude_pro") | Some("claude_max") | Some("claude_team") | Some("claude_enterprise"))
+                })
+            })
+        })
+        .and_then(org_uuid)
+        .or_else(|| memberships.iter().find_map(org_uuid))
 }
 
 fn claude_plan_label(account: &serde_json::Value, subscription: Option<&serde_json::Value>, usage: &serde_json::Value) -> &'static str {
@@ -205,16 +210,8 @@ fn count_local_messages() -> u32 {
 #[tauri::command]
 async fn debug_claude_api(session_key: String) -> Result<String, String> {
     let session_key = session_key.trim();
-    let org_uuid = match cli_org_uuid() {
-        Some(id) if !id.is_empty() => id,
-        _ => {
-            let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
-            claude_org_uuid(&me).unwrap_or_default()
-        }
-    };
-    if org_uuid.is_empty() {
-        return Err("Could not find org UUID".to_string());
-    }
+    let me = claude_get_json("https://claude.ai/api/account", session_key).await?;
+    let org_uuid = claude_org_uuid(&me).ok_or_else(|| "Could not find org UUID".to_string())?;
     let limits = claude_get_json(
         &format!("https://claude.ai/api/organizations/{}/usage", org_uuid),
         session_key,
