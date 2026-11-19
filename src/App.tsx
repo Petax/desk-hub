@@ -77,7 +77,8 @@ export default function App() {
           />
         ) : (
           <>
-            <ClaudeWidget config={config} />
+            <ClaudeWidget config={config} account={1} />
+            {config.claude_session_key_2 && <ClaudeWidget config={config} account={2} />}
             <CodexWidget />
             {(config.show_media ?? true) && <MediaWidget />}
           </>

@@ -8,6 +8,9 @@ use tauri::{AppHandle, Manager, Window};
 #[derive(Serialize, Deserialize, Clone, Default)]
 pub struct AppConfig {
     pub claude_session_key: Option<String>,
+    pub claude_session_key_2: Option<String>,
+    pub claude_label: Option<String>,
+    pub claude_label_2: Option<String>,
     pub claude_daily_limit: Option<u32>,
     pub show_media: Option<bool>,
     pub opacity: Option<f64>,
@@ -59,11 +62,16 @@ pub struct ClaudeUsage {
 }
 
 #[tauri::command]
-async fn get_claude_usage(app: AppHandle) -> Result<ClaudeUsage, String> {
+async fn get_claude_usage(app: AppHandle, account: Option<u8>) -> Result<ClaudeUsage, String> {
     let config = get_config(app);
     let local_limit = config.claude_daily_limit.unwrap_or(500);
 
-    if let Some(session_key) = config.claude_session_key.as_deref() {
+    let key = if account == Some(2) {
+        config.claude_session_key_2.as_deref()
+    } else {
+        config.claude_session_key.as_deref()
+    };
+    if let Some(session_key) = key {
         if !session_key.trim().is_empty() {
             return fetch_claude_api(session_key.trim(), local_limit).await;
         }

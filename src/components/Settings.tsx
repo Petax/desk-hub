@@ -23,8 +23,8 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
     onOpacityPreview(v);
   }
 
-  async function runDebug() {
-    const key = form.claude_session_key;
+  async function runDebug(account: 1 | 2 = 1) {
+    const key = account === 2 ? form.claude_session_key_2 : form.claude_session_key;
     if (!key) { setDebugOutput("No session key set."); return; }
     setDebugging(true);
     setDebugOutput(null);
@@ -43,7 +43,14 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
   return (
     <div className="settings">
       <div className="settings-group">
-        <label className="settings-label">Claude session key</label>
+        <label className="settings-label">Account 1 name</label>
+        <input
+          className="settings-input"
+          placeholder="Claude 1"
+          value={form.claude_label ?? ""}
+          onChange={(e) => set("claude_label", e.target.value || undefined)}
+        />
+        <label className="settings-label">Claude session key (account 1)</label>
         <input
           className="settings-input"
           type="password"
@@ -56,9 +63,30 @@ export function Settings({ config, onSave, onOpacityPreview }: Props) {
         </span>
       </div>
 
+      <div className="settings-group">
+        <label className="settings-label">Account 2 name</label>
+        <input
+          className="settings-input"
+          placeholder="Claude 2"
+          value={form.claude_label_2 ?? ""}
+          onChange={(e) => set("claude_label_2", e.target.value || undefined)}
+        />
+        <label className="settings-label">Claude session key (account 2)</label>
+        <input
+          className="settings-input"
+          type="password"
+          placeholder="sk-ant-sid01-... (use a separate browser profile/incognito)"
+          value={form.claude_session_key_2 ?? ""}
+          onChange={(e) => set("claude_session_key_2", e.target.value || undefined)}
+        />
+      </div>
+
       <div className="settings-row">
-        <button className="btn-secondary" onClick={runDebug} disabled={debugging}>
-          {debugging ? "fetching..." : "Debug API response"}
+        <button className="btn-secondary" onClick={() => runDebug(1)} disabled={debugging}>
+          {debugging ? "fetching..." : "Debug account 1"}
+        </button>
+        <button className="btn-secondary" onClick={() => runDebug(2)} disabled={debugging}>
+          Debug account 2
         </button>
       </div>
 

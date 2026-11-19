@@ -6,9 +6,12 @@ import { UsageLimitRow } from "./UsageLimitRow";
 
 interface Props {
   config: AppConfig;
+  account?: 1 | 2;
 }
 
-export function ClaudeWidget({ config }: Props) {
+export function ClaudeWidget({ config, account = 1 }: Props) {
+  const sessionKey = account === 2 ? config.claude_session_key_2 : config.claude_session_key;
+  const label = (account === 2 ? config.claude_label_2 : config.claude_label) || `Claude ${account}`;
   const [data, setData] = useState<ClaudeUsage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [spinning, setSpinning] = useState(false);
@@ -20,7 +23,7 @@ export function ClaudeWidget({ config }: Props) {
 
     async function load() {
       try {
-        const usage = await getClaudeUsage();
+        const usage = await getClaudeUsage(account);
         if (!cancelled) {
           setData(usage);
           setError(null);
@@ -37,7 +40,7 @@ export function ClaudeWidget({ config }: Props) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [config.claude_session_key]);
+  }, [sessionKey, account]);
 
   async function handleRefresh() {
     setSpinning(true);
@@ -49,9 +52,9 @@ export function ClaudeWidget({ config }: Props) {
     <div className="widget">
       <div className="widget-header">
         <span className="widget-label">
-          Claude{data?.plan ? ` - ${data.plan}` : ""}
+          {label}{data?.plan ? ` - ${data.plan}` : ""}
         </span>
-        <span className="widget-status">{config.claude_session_key ? "live" : "local"}</span>
+        <span className="widget-status">{sessionKey ? "live" : "local"}</span>
         <button className={`btn-icon refresh-btn${spinning ? " spinning" : ""}`} title="Refresh" onClick={handleRefresh}>↻</button>
       </div>
 

@@ -12,7 +12,8 @@ export const startDragging = (): Promise<void> => getCurrentWindow().startDraggi
 export const minimizeWindow = (): Promise<void> => getCurrentWindow().minimize();
 export const closeWindow = (): Promise<void> => getCurrentWindow().close();
 
-export const getClaudeUsage = (): Promise<ClaudeUsage> => invoke("get_claude_usage");
+export const getClaudeUsage = (account: 1 | 2 = 1): Promise<ClaudeUsage> =>
+  invoke("get_claude_usage", { account });
 
 export const getCodexUsage = (): Promise<CodexUsage> => invoke("get_codex_usage");
 

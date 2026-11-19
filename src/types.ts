@@ -1,5 +1,8 @@
 export interface AppConfig {
   claude_session_key?: string;
+  claude_session_key_2?: string;
+  claude_label?: string;
+  claude_label_2?: string;
   claude_daily_limit?: number;
   show_media?: boolean;
   opacity?: number; // 0.0–1.0, default 0.93
