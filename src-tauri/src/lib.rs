@@ -125,6 +125,11 @@ async fn claude_get_json(url: &str, session_key: &str) -> Result<serde_json::Val
     let status = resp.status();
     let body = resp.text().await.map_err(|e| e.to_string())?;
     if !status.is_success() {
+        // claude.ai revokes a sessionKey when that account logs out (including
+        // switching accounts in the same browser), so the key stops working here.
+        if body.contains("account_session_invalid") {
+            return Err("Session key expired (this account was logged out of claude.ai). Paste a fresh key in settings.".to_string());
+        }
         return Err(format!("Claude API {}: {}", status, compact_error_body(&body)));
     }
     serde_json::from_str(body.trim()).map_err(|e| format!("Claude JSON parse: {e}"))
