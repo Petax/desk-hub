@@ -134,7 +134,8 @@ fn usage_pct(data: &serde_json::Value, key: &str) -> Option<f64> {
     data[key]["utilization"].as_f64()
         .or_else(|| data[key]["utilization_pct"].as_f64())
         .or_else(|| data[key]["percent_used"].as_f64())
-        .map(|v| if v <= 1.0 { v * 100.0 } else { v })
+        // Already a percentage (0-100). Never rescale: a real 1% would become 100%.
+        .map(|v| v.clamp(0.0, 100.0))
 }
 
 fn usage_resets_at<'a>(data: &'a serde_json::Value, key: &str) -> Option<&'a str> {

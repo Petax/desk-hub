@@ -63,7 +63,8 @@ export function forecastUsage(
 
   const windowMs = windowHours * 60 * 60 * 1000;
   const elapsedMs = Math.min(windowMs, Math.max(0, nowMs - (resetMs - windowMs)));
-  if (elapsedMs <= 0) return undefined;
+  // Too early in the window to extrapolate: tiny elapsed time blows up the projection.
+  if (elapsedMs < windowMs * 0.05) return undefined;
 
   const elapsedHours = elapsedMs / (60 * 60 * 1000);
   return {
